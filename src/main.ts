@@ -62,6 +62,8 @@ async function bootstrap() {
     }),
   );
 
+  app.enableCors();
+  
   const port = process.env.SERVER_PORT || 3000;
   await app.listen(port, '0.0.0.0');
   if (process.env.NODE_ENV !== 'production') {
