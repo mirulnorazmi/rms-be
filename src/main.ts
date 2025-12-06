@@ -64,8 +64,14 @@ async function bootstrap() {
 
   app.enableCors();
   
-  const port = process.env.SERVER_PORT || 3000;
-  await app.listen(port, '0.0.0.0');
+  // Azure uses 'PORT'. We must check that first.
+const port = process.env.PORT || process.env.SERVER_PORT || 3000;
+
+// Log the port so we can verify it in Azure Log Stream
+Logger.log(`Application listening on port: ${port}`, 'Bootstrap');
+
+await app.listen(port, '0.0.0.0');
+
   if (process.env.NODE_ENV !== 'production') {
     Logger.debug(
       `${await app.getUrl()} - Environment: ${process.env.NODE_ENV}`,
