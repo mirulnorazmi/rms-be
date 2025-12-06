@@ -7,7 +7,7 @@ on:
 
 env:
   # TODO: Replace with your actual Azure Web App name
-  AZURE_WEBAPP_NAME: 'my-nestjs-app-name' 
+  AZURE_WEBAPP_NAME: 'rms-api' 
   NODE_VERSION: '22' 
 
 permissions:
