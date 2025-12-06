@@ -37,11 +37,30 @@ export interface IMaintenanceTicketItem {
   reported_date: Date;
 }
 
+export interface IAtRiskTenant {
+  tenant_id: number;
+  tenant_name: string;
+  risk_level: 'high' | 'medium';
+  overdue_count: number;
+  total_overdue_amount: number;
+}
+
+export interface IClaudeInsight {
+  category: 'revenue' | 'vacancy' | 'tenant_risk' | 'payment_behavior';
+  title: string;
+  prediction: string;
+  confidence: 'high' | 'medium' | 'low';
+  alert_level: 'info' | 'warning' | 'critical';
+  recommendation: string;
+  at_risk_tenants?: IAtRiskTenant[];
+}
+
 export interface ILandlordDashboard {
   rent_collection: IRentCollection;
   occupancy_rate: IOccupancyRate;
   maintenance_summary: IMaintenanceTicketSummary;
   maintenance_tickets: IMaintenanceTicketItem[];
+  claude_insight: IClaudeInsight[];
 }
 
 export interface ILeasePeriod {
