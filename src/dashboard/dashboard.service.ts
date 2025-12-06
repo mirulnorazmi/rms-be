@@ -16,7 +16,7 @@ import { IssuePriority } from '../maintenance-issues/enums/issue-priority.enum';
 import { TenantPaymentStatus } from './enums/tenant-payment-status.enum';
 import { TenantRiskStatus } from './enums/tenant-risk-status.enum';
 import { RentStatus } from './enums/rent-status.enum';
-import { AiService, LandlordDashboardData, AtRiskTenant } from '../common/ai/ai.service';
+import { AiService, LandlordDashboardData, AtRiskTenant, ProfitHistoryData } from '../common/ai/ai.service';
 import {
   ILandlordDashboard,
   IRentCollection,
@@ -26,6 +26,13 @@ import {
   IClaudeInsight,
   ILandlordTenant,
 } from './interfaces/landlord-dashboard.interface';
+import {
+  ILandlordReports,
+  IMonthlyOverview,
+  IKeyMetrics,
+  IProfitGraph,
+  IProfitDataPoint,
+} from './interfaces/landlord-reports.interface';
 import {
   ITenantDashboard,
   IRentOverview,
@@ -1613,6 +1620,368 @@ export class DashboardService {
         file_path: document.file_path,
         file_url: `${this.r2BaseUrl}/${document.file_path}`,
       },
+    };
+  }
+
+  // ==================== LANDLORD REPORTS ====================
+
+  async getLandlordReports(landlordId: number): Promise<ILandlordReports> {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Get historical data for the past 12 months
+    const historicalData = await this.getHistoricalProfitData(landlordId, 12);
+
+    // Get monthly overview for current month
+    const monthlyOverview = await this.getMonthlyOverview(landlordId, currentMonth, currentYear);
+
+    // Get key metrics
+    const keyMetrics = await this.getKeyMetrics(landlordId, currentMonth, currentYear);
+
+    // Get profit graph with AI predictions
+    const profitGraph = await this.getProfitGraphWithPredictions(historicalData);
+
+    return {
+      monthly_overview: monthlyOverview,
+      key_metrics: keyMetrics,
+      profit_graph: profitGraph,
+      generated_at: new Date().toISOString(),
+    };
+  }
+
+  private async getMonthlyOverview(
+    landlordId: number,
+    month: number,
+    year: number,
+  ): Promise<IMonthlyOverview> {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+    const period = `${monthNames[month]} ${year}`;
+
+    // Get properties
+    const properties = await this.propertiesRepository.find({
+      where: { landlord_id: landlordId },
+    });
+    const propertyIds = properties.map((p) => p.property_id);
+
+    if (propertyIds.length === 0) {
+      return {
+        period,
+        revenue: 0,
+        expenses: 0,
+        net_income: 0,
+        currency: 'RM',
+      };
+    }
+
+    // Get units
+    const units = await this.unitsRepository.find({
+      where: propertyIds.map((id) => ({ property_id: id })),
+    });
+    const unitIds = units.map((u) => u.unit_id);
+
+    if (unitIds.length === 0) {
+      return {
+        period,
+        revenue: 0,
+        expenses: 0,
+        net_income: 0,
+        currency: 'RM',
+      };
+    }
+
+    // Get contracts
+    const contracts = await this.contractsRepository.find({
+      where: unitIds.map((id) => ({ unit_id: id })),
+    });
+    const contractIds = contracts.map((c) => c.contract_id);
+
+    // Calculate revenue from payments in this month
+    const startOfMonth = new Date(year, month, 1);
+    const endOfMonth = new Date(year, month + 1, 0);
+
+    const payments = await this.paymentsRepository.find({
+      where: contractIds.map((id) => ({ contract_id: id })),
+    });
+
+    const monthlyPayments = payments.filter((p) => {
+      if (p.status !== PaymentStatus.PAID || !p.payment_date) return false;
+      const paymentDate = new Date(p.payment_date);
+      return paymentDate >= startOfMonth && paymentDate <= endOfMonth;
+    });
+
+    const revenue = monthlyPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+    // Estimate expenses (maintenance costs, etc.) - simplified calculation
+    // In a real scenario, you'd have an expenses table
+    const maintenanceIssues = await this.maintenanceIssuesRepository.find({
+      where: unitIds.map((id) => ({ unit_id: id, status: IssueStatus.COMPLETED })),
+    });
+
+    const completedThisMonth = maintenanceIssues.filter((issue) => {
+      if (!issue.completion_date) return false;
+      const completionDate = new Date(issue.completion_date);
+      return completionDate >= startOfMonth && completionDate <= endOfMonth;
+    });
+
+    // Estimate RM 500 per completed maintenance issue (simplified)
+    const expenses = completedThisMonth.length * 500;
+
+    return {
+      period,
+      revenue: Math.round(revenue * 100) / 100,
+      expenses: Math.round(expenses * 100) / 100,
+      net_income: Math.round((revenue - expenses) * 100) / 100,
+      currency: 'RM',
+    };
+  }
+
+  private async getKeyMetrics(
+    landlordId: number,
+    month: number,
+    year: number,
+  ): Promise<IKeyMetrics> {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthLabel = `${monthNames[month]} ${year}`;
+    const yearLabel = `${year}`;
+
+    // Get properties
+    const properties = await this.propertiesRepository.find({
+      where: { landlord_id: landlordId },
+    });
+    const propertyIds = properties.map((p) => p.property_id);
+
+    if (propertyIds.length === 0) {
+      return {
+        vacancy_rate: {
+          current_month: 0,
+          year_to_date: 0,
+          month_label: monthLabel,
+          year_label: yearLabel,
+        },
+        collection_rate: {
+          current_month: 0,
+          year_to_date: 0,
+          month_label: monthLabel,
+          year_label: yearLabel,
+        },
+      };
+    }
+
+    // Get units
+    const units = await this.unitsRepository.find({
+      where: propertyIds.map((id) => ({ property_id: id })),
+    });
+    const totalUnits = units.length;
+    const unitIds = units.map((u) => u.unit_id);
+
+    // Get current month vacancy rate
+    const activeContracts = await this.contractsRepository.find({
+      where: unitIds.map((id) => ({
+        unit_id: id,
+        status: ContractStatus.ACTIVE,
+      })),
+    });
+    const occupiedUnits = new Set(activeContracts.map((c) => c.unit_id)).size;
+    const vacantUnits = totalUnits - occupiedUnits;
+    const currentMonthVacancy = totalUnits > 0 ? (vacantUnits / totalUnits) * 100 : 0;
+
+    // Year-to-date vacancy (average) - simplified as current
+    const ytdVacancy = currentMonthVacancy;
+
+    // Get contracts for collection rate
+    const contracts = await this.contractsRepository.find({
+      where: unitIds.map((id) => ({ unit_id: id })),
+    });
+    const contractIds = contracts.map((c) => c.contract_id);
+
+    // Calculate collection rates
+    const startOfMonth = new Date(year, month, 1);
+    const endOfMonth = new Date(year, month + 1, 0);
+    const startOfYear = new Date(year, 0, 1);
+
+    const allPayments = await this.paymentsRepository.find({
+      where: contractIds.map((id) => ({ contract_id: id })),
+    });
+
+    // Current month collection rate
+    const monthPayments = allPayments.filter((p) => {
+      const dueDate = new Date(p.due_date);
+      return dueDate >= startOfMonth && dueDate <= endOfMonth;
+    });
+    const monthCollected = monthPayments.filter((p) => p.status === PaymentStatus.PAID).length;
+    const currentMonthCollection = monthPayments.length > 0 
+      ? (monthCollected / monthPayments.length) * 100 
+      : 100;
+
+    // Year-to-date collection rate
+    const ytdPayments = allPayments.filter((p) => {
+      const dueDate = new Date(p.due_date);
+      return dueDate >= startOfYear && dueDate <= endOfMonth;
+    });
+    const ytdCollected = ytdPayments.filter((p) => p.status === PaymentStatus.PAID).length;
+    const ytdCollection = ytdPayments.length > 0 
+      ? (ytdCollected / ytdPayments.length) * 100 
+      : 100;
+
+    return {
+      vacancy_rate: {
+        current_month: Math.round(currentMonthVacancy * 10) / 10,
+        year_to_date: Math.round(ytdVacancy * 10) / 10,
+        month_label: monthLabel,
+        year_label: yearLabel,
+      },
+      collection_rate: {
+        current_month: Math.round(currentMonthCollection * 10) / 10,
+        year_to_date: Math.round(ytdCollection * 10) / 10,
+        month_label: monthLabel,
+        year_label: yearLabel,
+      },
+    };
+  }
+
+  private async getHistoricalProfitData(
+    landlordId: number,
+    months: number,
+  ): Promise<ProfitHistoryData[]> {
+    const now = new Date();
+    const data: ProfitHistoryData[] = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Get properties
+    const properties = await this.propertiesRepository.find({
+      where: { landlord_id: landlordId },
+    });
+    const propertyIds = properties.map((p) => p.property_id);
+
+    if (propertyIds.length === 0) {
+      // Return empty data with placeholder months
+      for (let i = months - 1; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        data.push({
+          month: monthNames[date.getMonth()],
+          year: date.getFullYear(),
+          revenue: 0,
+          expenses: 0,
+          actual_profit: 0,
+          occupancy_rate: 0,
+          collection_rate: 0,
+        });
+      }
+      return data;
+    }
+
+    // Get units
+    const units = await this.unitsRepository.find({
+      where: propertyIds.map((id) => ({ property_id: id })),
+    });
+    const totalUnits = units.length;
+    const unitIds = units.map((u) => u.unit_id);
+
+    // Get contracts
+    const contracts = await this.contractsRepository.find({
+      where: unitIds.map((id) => ({ unit_id: id })),
+    });
+    const contractIds = contracts.map((c) => c.contract_id);
+
+    // Get all payments
+    const allPayments = await this.paymentsRepository.find({
+      where: contractIds.map((id) => ({ contract_id: id })),
+    });
+
+    // Get maintenance issues
+    const maintenanceIssues = await this.maintenanceIssuesRepository.find({
+      where: unitIds.map((id) => ({ unit_id: id })),
+    });
+
+    // Calculate for each month
+    for (let i = months - 1; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthIndex = date.getMonth();
+      const year = date.getFullYear();
+      const startOfMonth = new Date(year, monthIndex, 1);
+      const endOfMonth = new Date(year, monthIndex + 1, 0);
+
+      // Revenue
+      const monthPayments = allPayments.filter((p) => {
+        if (p.status !== PaymentStatus.PAID || !p.payment_date) return false;
+        const paymentDate = new Date(p.payment_date);
+        return paymentDate >= startOfMonth && paymentDate <= endOfMonth;
+      });
+      const revenue = monthPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      // Expenses (maintenance)
+      const completedMaintenance = maintenanceIssues.filter((issue) => {
+        if (!issue.completion_date || issue.status !== IssueStatus.COMPLETED) return false;
+        const completionDate = new Date(issue.completion_date);
+        return completionDate >= startOfMonth && completionDate <= endOfMonth;
+      });
+      const expenses = completedMaintenance.length * 500;
+
+      // Occupancy rate for that month
+      const monthContracts = contracts.filter((c) => {
+        const startDate = new Date(c.start_date);
+        const endDate = new Date(c.end_date);
+        return startDate <= endOfMonth && endDate >= startOfMonth && 
+               (c.status === ContractStatus.ACTIVE || c.status === ContractStatus.EXPIRED);
+      });
+      const monthOccupied = new Set(monthContracts.map((c) => c.unit_id)).size;
+      const occupancyRate = totalUnits > 0 ? (monthOccupied / totalUnits) * 100 : 0;
+
+      // Collection rate for that month
+      const duePayments = allPayments.filter((p) => {
+        const dueDate = new Date(p.due_date);
+        return dueDate >= startOfMonth && dueDate <= endOfMonth;
+      });
+      const collectedPayments = duePayments.filter((p) => p.status === PaymentStatus.PAID).length;
+      const collectionRate = duePayments.length > 0 
+        ? (collectedPayments / duePayments.length) * 100 
+        : 100;
+
+      data.push({
+        month: monthNames[monthIndex],
+        year,
+        revenue: Math.round(revenue * 100) / 100,
+        expenses: Math.round(expenses * 100) / 100,
+        actual_profit: Math.round((revenue - expenses) * 100) / 100,
+        occupancy_rate: Math.round(occupancyRate * 10) / 10,
+        collection_rate: Math.round(collectionRate * 10) / 10,
+      });
+    }
+
+    return data;
+  }
+
+  private async getProfitGraphWithPredictions(
+    historicalData: ProfitHistoryData[],
+  ): Promise<IProfitGraph> {
+    // Get AI predictions and insights
+    const aiResult = await this.aiService.generateProfitPredictionAndInsight(historicalData, 'RM');
+
+    // Build data points with actual profits and add predicted profits for future months
+    const dataPoints: IProfitDataPoint[] = historicalData.map((d) => ({
+      month: d.month,
+      year: d.year,
+      actual_profit: d.actual_profit,
+      predicted_profit: d.actual_profit, // For historical data, predicted = actual
+    }));
+
+    // Add predicted future months
+    for (const predicted of aiResult.predicted_profits) {
+      dataPoints.push({
+        month: predicted.month,
+        year: predicted.year,
+        actual_profit: 0, // No actual data yet for future
+        predicted_profit: predicted.predicted_profit,
+      });
+    }
+
+    return {
+      data_points: dataPoints,
+      insight: aiResult.insight,
+      currency: 'RM',
     };
   }
 }
