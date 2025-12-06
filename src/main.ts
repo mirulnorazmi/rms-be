@@ -11,7 +11,7 @@ import { registerFastifyPlugins } from './common/plugins/register-fastify.plugin
 import { validateSchemaEnv } from './helpers/validation-schema-env';
 import { DataSource } from 'typeorm';
 
-import fs from 'fs';
+import * as fs from 'fs';
 
 // Only load .env if the file actually exists (Development mode)
 if (fs.existsSync('.env')) {
