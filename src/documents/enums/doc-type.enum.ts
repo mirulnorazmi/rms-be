@@ -1,6 +1,8 @@
 export enum DocType {
-  CONTRACT = 'Contract',
-  ID = 'ID',
-  RECEIPT = 'Receipt',
+  CONTRACT_LEASE = 'Contract / Lease',
+  PAYMENT_RECEIPT = 'Payment Receipt',
+  ID_PASSPORT = 'ID / Passport',
+  MAINTENANCE_PHOTO = 'Maintenance Photo',
+  OTHER = 'Other',
 }
 

@@ -35,6 +35,9 @@ export class Documents {
   })
   doc_type: DocType;
 
+  @Column({ length: 255 })
+  file_name: string;
+
   @Column({ length: 500 })
   file_path: string;
 
