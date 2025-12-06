@@ -16,13 +16,14 @@ import { IssuePriority } from '../maintenance-issues/enums/issue-priority.enum';
 import { TenantPaymentStatus } from './enums/tenant-payment-status.enum';
 import { TenantRiskStatus } from './enums/tenant-risk-status.enum';
 import { RentStatus } from './enums/rent-status.enum';
-import { AiService } from '../common/ai/ai.service';
+import { AiService, LandlordDashboardData, AtRiskTenant } from '../common/ai/ai.service';
 import {
   ILandlordDashboard,
   IRentCollection,
   IOccupancyRate,
   IMaintenanceTicketSummary,
   IMaintenanceTicketItem,
+  IClaudeInsight,
   ILandlordTenant,
 } from './interfaces/landlord-dashboard.interface';
 import {
@@ -80,19 +81,203 @@ export class DashboardService {
   }
 
   async getLandlordDashboard(landlordId: number): Promise<ILandlordDashboard> {
-    const [rentCollection, occupancyRate, maintenanceSummary, maintenanceTickets] =
+    const [rentCollection, occupancyRate, maintenanceSummary, maintenanceTickets, tenantRiskData] =
       await Promise.all([
         this.getRentCollection(landlordId),
         this.getOccupancyRate(landlordId),
         this.getMaintenanceSummary(landlordId),
         this.getMaintenanceTickets(landlordId),
+        this.getTenantRiskData(landlordId),
       ]);
+
+    // Prepare data for AI insights
+    const dashboardData: LandlordDashboardData = {
+      total_collected: rentCollection.total_collected,
+      total_pending: rentCollection.total_pending,
+      this_month_collected: rentCollection.this_month_rent_collected,
+      this_year_collected: rentCollection.this_year_rent_collected,
+      total_units: occupancyRate.total_units,
+      occupied_units: occupancyRate.occupied_units,
+      vacant_units: occupancyRate.vacant_units,
+      total_tenants: tenantRiskData.total_tenants,
+      tenants_high_risk: tenantRiskData.high_risk,
+      tenants_medium_risk: tenantRiskData.medium_risk,
+      tenants_low_risk: tenantRiskData.low_risk,
+      high_risk_tenants: tenantRiskData.high_risk_tenants,
+      overdue_payments: tenantRiskData.overdue_payments,
+      pending_payments: tenantRiskData.pending_payments,
+      average_late_days: tenantRiskData.average_late_days,
+      open_maintenance_tickets: maintenanceSummary.total_open,
+      currency: 'RM',
+    };
+
+    // Generate AI insights
+    const claudeInsight = await this.aiService.generateLandlordInsights(dashboardData);
 
     return {
       rent_collection: rentCollection,
       occupancy_rate: occupancyRate,
       maintenance_summary: maintenanceSummary,
       maintenance_tickets: maintenanceTickets,
+      claude_insight: claudeInsight as IClaudeInsight[],
+    };
+  }
+
+  private async getTenantRiskData(landlordId: number): Promise<{
+    total_tenants: number;
+    high_risk: number;
+    medium_risk: number;
+    low_risk: number;
+    high_risk_tenants: AtRiskTenant[];
+    overdue_payments: number;
+    pending_payments: number;
+    average_late_days: number;
+  }> {
+    // Get all properties owned by landlord
+    const properties = await this.propertiesRepository.find({
+      where: { landlord_id: landlordId },
+    });
+
+    const propertyIds = properties.map((p) => p.property_id);
+
+    if (propertyIds.length === 0) {
+      return {
+        total_tenants: 0,
+        high_risk: 0,
+        medium_risk: 0,
+        low_risk: 0,
+        high_risk_tenants: [],
+        overdue_payments: 0,
+        pending_payments: 0,
+        average_late_days: 0,
+      };
+    }
+
+    // Get all units for these properties
+    const units = await this.unitsRepository.find({
+      where: propertyIds.map((id) => ({ property_id: id })),
+    });
+
+    const unitIds = units.map((u) => u.unit_id);
+
+    if (unitIds.length === 0) {
+      return {
+        total_tenants: 0,
+        high_risk: 0,
+        medium_risk: 0,
+        low_risk: 0,
+        high_risk_tenants: [],
+        overdue_payments: 0,
+        pending_payments: 0,
+        average_late_days: 0,
+      };
+    }
+
+    // Get active contracts with tenant info
+    const contracts = await this.contractsRepository.find({
+      where: unitIds.map((id) => ({
+        unit_id: id,
+        status: ContractStatus.ACTIVE,
+      })),
+      relations: ['tenant'],
+    });
+
+    const contractIds = contracts.map((c) => c.contract_id);
+    const totalTenants = contracts.length;
+
+    if (contractIds.length === 0) {
+      return {
+        total_tenants: 0,
+        high_risk: 0,
+        medium_risk: 0,
+        low_risk: 0,
+        high_risk_tenants: [],
+        overdue_payments: 0,
+        pending_payments: 0,
+        average_late_days: 0,
+      };
+    }
+
+    // Get all payments for these contracts
+    const payments = await this.paymentsRepository.find({
+      where: contractIds.map((id) => ({ contract_id: id })),
+    });
+
+    // Count payment statuses
+    let overduePayments = 0;
+    let pendingPayments = 0;
+    let totalLateDays = 0;
+    let latePaymentsCount = 0;
+
+    payments.forEach((p) => {
+      if (p.status === PaymentStatus.OVERDUE) {
+        overduePayments++;
+      } else if (p.status === PaymentStatus.PENDING) {
+        pendingPayments++;
+      }
+
+      // Calculate late days for paid payments
+      if (p.status === PaymentStatus.PAID && p.payment_date && p.due_date) {
+        const paymentDate = new Date(p.payment_date);
+        const dueDate = new Date(p.due_date);
+        if (paymentDate > dueDate) {
+          const diffTime = paymentDate.getTime() - dueDate.getTime();
+          const lateDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          totalLateDays += lateDays;
+          latePaymentsCount++;
+        }
+      }
+    });
+
+    // Calculate average late days
+    const averageLateDays = latePaymentsCount > 0 ? Math.round(totalLateDays / latePaymentsCount) : 0;
+
+    // Calculate risk distribution and collect high-risk tenant details
+    let highRisk = 0;
+    let mediumRisk = 0;
+    let lowRisk = 0;
+    const highRiskTenants: AtRiskTenant[] = [];
+
+    for (const contract of contracts) {
+      const tenantPayments = payments.filter((p) => p.contract_id === contract.contract_id);
+      const overduePaymentsList = tenantPayments.filter((p) => p.status === PaymentStatus.OVERDUE);
+      const tenantOverdue = overduePaymentsList.length;
+      const totalPayments = tenantPayments.length;
+      const totalOverdueAmount = overduePaymentsList.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      if (totalPayments === 0) {
+        lowRisk++;
+      } else {
+        const overdueRatio = tenantOverdue / totalPayments;
+        if (overdueRatio >= 0.3 || tenantOverdue >= 3) {
+          highRisk++;
+          // Add to high-risk tenants list
+          if (contract.tenant) {
+            highRiskTenants.push({
+              tenant_id: contract.tenant.user_id,
+              tenant_name: `${contract.tenant.first_name} ${contract.tenant.last_name}`,
+              risk_level: 'high',
+              overdue_count: tenantOverdue,
+              total_overdue_amount: totalOverdueAmount,
+            });
+          }
+        } else if (overdueRatio >= 0.1 || tenantOverdue >= 1) {
+          mediumRisk++;
+        } else {
+          lowRisk++;
+        }
+      }
+    }
+
+    return {
+      total_tenants: totalTenants,
+      high_risk: highRisk,
+      medium_risk: mediumRisk,
+      low_risk: lowRisk,
+      high_risk_tenants: highRiskTenants,
+      overdue_payments: overduePayments,
+      pending_payments: pendingPayments,
+      average_late_days: averageLateDays,
     };
   }
 
