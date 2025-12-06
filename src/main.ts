@@ -7,7 +7,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { registerFastifyPlugins } from './common/plugins/register-fastify.plugins';
+import { registerFastifyPlugins } from './common/plugins/register-fastify.plugins.js';
 import { validateSchemaEnv } from './helpers/validation-schema-env';
 import { DataSource } from 'typeorm';
 
