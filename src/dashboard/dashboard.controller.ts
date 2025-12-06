@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { LandlordDashboardDto, LandlordTenantDto } from './dto/landlord-dashboard.dto';
+import { LandlordReportsDto } from './dto/landlord-reports.dto';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
@@ -55,6 +56,25 @@ export class DashboardController {
   ): Promise<LandlordTenantDto[]> {
     const landlordId = req.landlord?.user_id || req.user?.id;
     return this.dashboardService.getLandlordTenants(landlordId);
+  }
+
+  @Get('reports')
+  @UseGuards(LandlordGuard)
+  @ApiOperation({ 
+    summary: 'Get landlord financial reports with AI-powered profit predictions',
+    description: 'Returns monthly overview, key metrics (vacancy & collection rates), and profit graph with AI predictions and insights'
+  })
+  @ApiOkResponse({
+    description: 'Returns comprehensive financial reports with AI-powered insights',
+    type: LandlordReportsDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing token' })
+  @ApiForbiddenResponse({ description: 'Forbidden - User is not a landlord' })
+  async getLandlordReports(
+    @Request() req: { landlord?: { user_id: number }; user?: { id: number } },
+  ): Promise<LandlordReportsDto> {
+    const landlordId = req.landlord?.user_id || req.user?.id;
+    return this.dashboardService.getLandlordReports(landlordId);
   }
 }
 
