@@ -59,8 +59,7 @@ export class MaintenanceIssues {
   @Column({ length: 500, nullable: true })
   image_path: string;
 
-  @Column({ length: 100 })
+  @Column({ length: 100, nullable: true })
   category: string;
-
 }
 
