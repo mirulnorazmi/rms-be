@@ -11,6 +11,10 @@ import { UnauthorizedException, HttpException } from '@nestjs/common';
 const oneUser = {
   user_id: 1,
   role_id: 1,
+  role: {
+    role_id: 1,
+    role_name: 'Admin',
+  },
   first_name: 'John',
   last_name: 'Doe',
   email: 'test@example.com',
@@ -31,7 +35,10 @@ const userLogin = {
     id: 1,
     name: 'John Doe',
     email: 'test@example.com',
+    role_id: 1,
+    role_name: 'Admin',
   },
+  redirect_url: '/admin/dashboard',
 };
 
 const payload = {
