@@ -1,4 +1,9 @@
-process.loadEnvFile();
+import * as fs from 'fs';
+
+// Only load .env if the file actually exists (Development mode)
+if (fs.existsSync('.env')) {
+  process.loadEnvFile();
+}
 
 export interface JwtConfig {
   secret: string;

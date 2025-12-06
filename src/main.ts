@@ -11,7 +11,12 @@ import { registerFastifyPlugins } from './common/plugins/register-fastify.plugin
 import { validateSchemaEnv } from './helpers/validation-schema-env';
 import { DataSource } from 'typeorm';
 
-process.loadEnvFile();
+import * as fs from 'fs';
+
+// Only load .env if the file actually exists (Development mode)
+if (fs.existsSync('.env')) {
+  process.loadEnvFile();
+}
 
 validateSchemaEnv(process.env);
 
@@ -57,8 +62,16 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.SERVER_PORT || 3000;
-  await app.listen(port, '0.0.0.0');
+  // app.enableCors();
+  
+  // Azure uses 'PORT'. We must check that first.
+const port = process.env.PORT || process.env.SERVER_PORT || 3000;
+
+// Log the port so we can verify it in Azure Log Stream
+Logger.log(`Application listening on port: ${port}`, 'Bootstrap');
+
+await app.listen(port, '0.0.0.0');
+
   if (process.env.NODE_ENV !== 'production') {
     Logger.debug(
       `${await app.getUrl()} - Environment: ${process.env.NODE_ENV}`,
