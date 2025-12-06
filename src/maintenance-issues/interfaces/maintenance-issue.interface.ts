@@ -12,5 +12,7 @@ export interface IMaintenanceIssue {
   readonly reported_date: Date;
   readonly completion_date?: Date;
   readonly image_path?: string;
+  readonly category?: string;
+  readonly reported_by?: any; // Adding to match basic structure if needed, though ideally it should be a user interface
 }
 

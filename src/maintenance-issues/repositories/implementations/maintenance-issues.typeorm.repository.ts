@@ -64,7 +64,7 @@ export class MaintenanceIssuesTypeOrmRepository implements MaintenanceIssuesRepo
     });
   }
 
-  public async create(maintenanceIssueDto: MaintenanceIssueDto): Promise<IMaintenanceIssue> {
+  public async create(maintenanceIssueDto: MaintenanceIssueDto | any): Promise<IMaintenanceIssue> {
     return await this.maintenanceIssuesRepository.save(maintenanceIssueDto);
   }
 

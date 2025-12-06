@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import { UpdateResult, DeleteResult } from 'typeorm';
 import { IMaintenanceIssue } from './interfaces/maintenance-issue.interface';
@@ -14,12 +15,17 @@ import { IssueStatus } from './enums/issue-status.enum';
 import { IssuePriority } from './enums/issue-priority.enum';
 import { MAINTENANCE_ISSUES_REPOSITORY_TOKEN } from './repositories/maintenance-issues.repository.interface';
 import { MaintenanceIssuesTypeOrmRepository } from './repositories/implementations/maintenance-issues.typeorm.repository';
+import { ClaudeService } from '../common/claude/claude.service';
+import { CreateMaintenanceIssueDto } from './dto/create-maintenace-issue.dto';
 
 @Injectable()
 export class MaintenanceIssuesService {
+  private readonly logger = new Logger(MaintenanceIssuesService.name);
+
   constructor(
     @Inject(MAINTENANCE_ISSUES_REPOSITORY_TOKEN)
     private readonly maintenanceIssuesRepository: MaintenanceIssuesTypeOrmRepository,
+    private readonly claudeService: ClaudeService,
   ) {}
 
   public async findAll(): Promise<MaintenanceIssues[]> {
@@ -56,11 +62,59 @@ export class MaintenanceIssuesService {
     return await this.maintenanceIssuesRepository.findOpenIssues();
   }
 
-  public async create(maintenanceIssueDto: MaintenanceIssueDto): Promise<IMaintenanceIssue> {
+  async create(
+    createDto: CreateMaintenanceIssueDto,
+    imagePath?: string,
+  ): Promise<MaintenanceIssues> {
     try {
-      return await this.maintenanceIssuesRepository.create(maintenanceIssueDto);
-    } catch (err) {
-      throw new HttpException(err, HttpStatus.BAD_REQUEST);
+      let description = createDto.description;
+      let priority = createDto.priority;
+      let category = createDto.category;
+
+      // If image is provided and description is not provided or AI analysis is requested
+      if (imagePath && (!description || createDto.useAI)) {
+        this.logger.log('Analyzing maintenance issue with Claude AI...');
+        
+        const analysis = await this.claudeService.analyzeMaintenanceIssue(
+          imagePath,
+          createDto.title,
+          createDto.category,
+        );
+
+        // Use AI-generated description if not provided
+        if (!description) {
+          description = analysis.description;
+        }
+
+        // Use AI-generated priority
+        priority = analysis.priority;
+
+        // Use AI-suggested category if not provided
+        if (!category && analysis.suggestedCategory) {
+          category = analysis.suggestedCategory;
+        }
+
+        this.logger.log(`AI Analysis - Priority: ${priority}, Category: ${category}`);
+      }
+
+      // Create maintenance issue entity
+      const maintenanceIssue = {
+        unit_id: createDto.unit_id,
+        reported_by_id: createDto.reported_by_id,
+        title: createDto.title,
+        description: description || '',
+        status: IssueStatus.NEW,
+        priority: priority as IssuePriority,
+        category: category,
+        image_path: imagePath,
+        reported_date: new Date(),
+      };
+
+      // Save to database
+      return (await this.maintenanceIssuesRepository.create(maintenanceIssue)) as unknown as MaintenanceIssues;
+    } catch (error) {
+      this.logger.error('Error creating maintenance issue:', error);
+      throw error;
     }
   }
 
@@ -117,4 +171,3 @@ export class MaintenanceIssuesService {
     return await this.maintenanceIssuesRepository.delete(issueId);
   }
 }
-

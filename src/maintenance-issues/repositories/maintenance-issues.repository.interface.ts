@@ -11,7 +11,7 @@ export interface MaintenanceIssuesRepository {
   findByStatus(status: IssueStatus): void;
   findByPriority(priority: IssuePriority): void;
   findOpenIssues(): void;
-  create(maintenanceIssueDto: MaintenanceIssueDto): void;
+  create(maintenanceIssueDto: MaintenanceIssueDto | any): void;
   update(issueId: number, maintenanceIssueUpdateDto: MaintenanceIssueUpdateDto): void;
   updateStatus(issueId: number, status: IssueStatus): void;
   markAsCompleted(issueId: number, completionDate: Date): void;
