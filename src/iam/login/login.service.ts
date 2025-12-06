@@ -56,10 +56,14 @@ export class LoginService {
       this.signToken<Partial<JWTPayload>>(
         user.user_id,
         jwtConfig.accessTokenTtl ?? 3600,
-        { email: user.email },
+        { email: user.email, role_id: user.role_id },
       ),
       this.signToken(user.user_id, jwtConfig.refreshTokenTtl ?? 86400),
     ]);
+
+    // Determine redirect URL based on role
+    const redirectUrl = this.getRedirectUrlByRole(user.role_id, user.role?.role_name);
+
     return {
       accessToken,
       refreshToken,
@@ -67,8 +71,33 @@ export class LoginService {
         id: user.user_id,
         name: `${user.first_name} ${user.last_name}`,
         email: user.email,
+        role_id: user.role_id,
+        role_name: user.role?.role_name || 'Unknown',
       },
+      redirect_url: redirectUrl,
     };
+  }
+
+  private getRedirectUrlByRole(roleId: number, roleName?: string): string {
+    // Role mapping: 1 = Admin, 2 = Landlord, 3 = Tenant
+    switch (roleId) {
+      case 1:
+        return '/admin/dashboard';
+      case 2:
+        return '/landlord/dashboard';
+      case 3:
+        return '/tenant/dashboard';
+      default:
+        // Fallback using role name if available
+        if (roleName?.toLowerCase() === 'landlord') {
+          return '/landlord/dashboard';
+        } else if (roleName?.toLowerCase() === 'tenant') {
+          return '/tenant/dashboard';
+        } else if (roleName?.toLowerCase() === 'admin') {
+          return '/admin/dashboard';
+        }
+        return '/dashboard';
+    }
   }
 
   public async refreshTokens(
