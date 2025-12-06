@@ -62,7 +62,7 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors();
+  // app.enableCors();
   
   // Azure uses 'PORT'. We must check that first.
 const port = process.env.PORT || process.env.SERVER_PORT || 3000;
