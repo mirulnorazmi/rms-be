@@ -11,7 +11,9 @@ import { ContractsModule } from './contracts/contracts.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MaintenanceIssuesModule } from './maintenance-issues/maintenance-issues.module';
+import { UnitDetailsModule } from './unit-details/unit-details.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { RemindersModule } from './reminders/reminders.module';
 import { IamModule } from './iam/iam.module';
 import { readFileSync } from 'fs';
 
@@ -51,7 +53,9 @@ import { readFileSync } from 'fs';
     PaymentsModule,
     DocumentsModule,
     MaintenanceIssuesModule,
+    UnitDetailsModule,
     DashboardModule,
+    RemindersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
