@@ -10,6 +10,7 @@ import { Units } from '../../units/models/units.model';
 import { Users } from '../../users/models/users.model';
 import { IssueStatus } from '../enums/issue-status.enum';
 import { IssuePriority } from '../enums/issue-priority.enum';
+import { IssueCategory } from '../enums/issue-category.enum';
 
 @Entity()
 export class MaintenanceIssues {
@@ -42,6 +43,13 @@ export class MaintenanceIssues {
 
   @Column({ length: 1000 })
   description: string;
+
+  @Column({
+    type: 'enum',
+    enum: IssueCategory,
+    default: IssueCategory.OTHER,
+  })
+  category: IssueCategory;
 
   @Column({
     type: 'enum',
