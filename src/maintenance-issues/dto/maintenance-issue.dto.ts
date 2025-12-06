@@ -1,6 +1,7 @@
-import { IsNotEmpty, IsInt, IsEnum, IsString, MaxLength, IsOptional, IsDateString } from 'class-validator';
+import { IsNotEmpty, IsInt, IsEnum, IsString, MaxLength, IsOptional, IsDateString, IsBoolean, IsObject } from 'class-validator';
 import { IssueStatus } from '../enums/issue-status.enum';
 import { IssuePriority } from '../enums/issue-priority.enum';
+import { Users } from '@/users/models/users.model';
 
 export class MaintenanceIssueDto {
   @IsInt()
@@ -21,13 +22,13 @@ export class MaintenanceIssueDto {
   readonly title: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(1000)
-  readonly description: string;
+  readonly description?: string;
 
   @IsEnum(IssuePriority)
-  @IsNotEmpty()
-  readonly priority: IssuePriority;
+  @IsOptional()
+  readonly priority?: IssuePriority;
 
   @IsDateString()
   @IsOptional()
@@ -42,5 +43,17 @@ export class MaintenanceIssueDto {
   @MaxLength(500)
   // for Photo AI for Analysis
   readonly image_path?: string;
-}
 
+  @IsBoolean()
+  @IsOptional()
+  readonly useAI?: boolean;
+
+  @IsString()
+  @IsOptional()
+  readonly category?: string;
+
+  @IsObject()
+  @IsOptional()
+  readonly reported_by?: Users;
+
+}

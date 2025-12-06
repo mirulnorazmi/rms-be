@@ -21,7 +21,7 @@ export class MaintenanceIssues {
 
   @ManyToOne(() => Units, { eager: true })
   @JoinColumn({ name: 'unit_id', referencedColumnName: 'unit_id' })
-  unit: Units;
+  unit?: Units;
 
   @Column()
   reported_by_id: number;
@@ -58,5 +58,9 @@ export class MaintenanceIssues {
 
   @Column({ length: 500, nullable: true })
   image_path: string;
+
+  @Column({ length: 100 })
+  category: string;
+
 }
 
