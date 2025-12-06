@@ -4,7 +4,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { RentReminderController } from './rent-reminder.controller';
 import { LindyCallbackController } from './lindy-callback.controller';
 import { RentReminderService } from './rent-reminder.service';
-import { LindyApiKeyGuard } from '../common/lindy/lindy-api-key.guard';
 import { Payments } from '../payments/models/payments.model';
 import { Contracts } from '../contracts/models/contracts.model';
 import { LindyModule } from '../common/lindy/lindy.module';
@@ -18,7 +17,7 @@ import { UsersModule } from '../users/users.module';
     UsersModule,
   ],
   controllers: [RentReminderController, LindyCallbackController],
-  providers: [RentReminderService, LindyApiKeyGuard],
+  providers: [RentReminderService],
   exports: [RentReminderService],
 })
 export class RemindersModule {}
